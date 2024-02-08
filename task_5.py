@@ -2,6 +2,7 @@ from collections import deque
 import uuid
 import networkx as nx
 import matplotlib.pyplot as plt
+from tabulate import tabulate
 
 
 class Node:
@@ -13,82 +14,84 @@ class Node:
         self.id = str(uuid.uuid4())  # Унікальний ідентифікатор для кожного вузла
 
 
-def add_edges(graph, node, pos, x=0, y=0, layer=1):
+def add_edges(graph, node, pos, x=0, y=0, layer=1, node_colors=None):
     if node is not None:
-        graph.add_node(node.id, color=node.color, label=node.val)  # Використання id та збереження значення вузла
+        graph.add_node(node.id, color=node_colors[node.id], label=node.val)
         if node.left:
             graph.add_edge(node.id, node.left.id)
             l = x - 1 / 2 ** layer
             pos[node.left.id] = (l, y - 1)
-            l = add_edges(graph, node.left, pos, x=l, y=y - 1, layer=layer + 1)
+            l = add_edges(graph, node.left, pos, x=l, y=y - 1, layer=layer + 1, node_colors=node_colors)
         if node.right:
             graph.add_edge(node.id, node.right.id)
             r = x + 1 / 2 ** layer
             pos[node.right.id] = (r, y - 1)
-            r = add_edges(graph, node.right, pos, x=r, y=y - 1, layer=layer + 1)
+            r = add_edges(graph, node.right, pos, x=r, y=y - 1, layer=layer + 1, node_colors=node_colors)
     return graph
 
 
-def draw_tree(tree_root):
+def dfs(tree_root):
+    stack = [(tree_root, False)]
+    visited_order = 0
+    node_colors = {}
+    visited_nodes = []  
+
+    while stack:
+        node, visited = stack.pop()
+
+        if node is not None:
+            if not visited:
+
+                color = "#{:02X}{:02X}{:02X}".format(40 * visited_order, 120, 200)
+                node.color = color
+                node_colors[node.id] = color
+                visited_order += 1
+
+                visited_nodes.append(node.val)  
+
+                stack.append((node, True))  # visited
+                stack.append((node.right, False))
+                stack.append((node.left, False))
+
+    return tree_root, node_colors, visited_nodes  
+
+
+def bfs(tree_root):
+    queue = deque([(tree_root, False)])
+    visited_order = 0
+    node_colors = {}
+    visited_nodes = []
+
+    while queue:
+        node, visited = queue.popleft()
+
+        if node is not None:
+            if not visited:
+
+                color = "#{:02X}{:02X}{:02X}".format(40 * visited_order, 200, 48)
+                node.color = color
+                node_colors[node.id] = color
+                visited_order += 1
+
+                visited_nodes.append(node.val)
+
+                queue.append((node, True))  # visited
+                queue.append((node.left, False))
+                queue.append((node.right, False))
+
+    return visited_nodes, node_colors
+
+def draw_tree(tree_root, node_colors):
     tree = nx.DiGraph()
     pos = {tree_root.id: (0, 0)}
-    tree = add_edges(tree, tree_root, pos)
+    tree = add_edges(tree, tree_root, pos, node_colors=node_colors)
 
-    colors = [node[1]['color'] for node in tree.nodes(data=True)]
-    labels = {node[0]: node[1]['label'] for node in tree.nodes(data=True)}  # Використовуйте значення вузла для міток
+    colors = [node_colors[node] for node in pos.keys()]
+    labels = {node: tree.nodes[node]['label'] for node in tree.nodes()}
 
     plt.figure(figsize=(8, 5))
     nx.draw(tree, pos=pos, labels=labels, arrows=False, node_size=2500, node_color=colors)
     plt.show()
-
-
-def dfs(node, color='#e512f0'):
-    visited = []
-    stack = [(node, color)]
-
-    while stack:
-        current_node, current_color = stack.pop()
-        if current_node.val not in visited:
-            visited.append(current_node.val)
-            current_node.color = current_color
-            if current_node.right:
-                stack.append((current_node.right, adjust_color(current_color)))
-            if current_node.left:
-                stack.append((current_node.left, adjust_color(current_color)))
-
-    return visited
-
-
-def bfs(tree_root, color='#f0cb12'):
-    visited = []
-    queue = deque([(tree_root, color)])
-
-    while queue:
-        current_node, current_color = queue.popleft()
-        if current_node.val not in visited:
-            visited.append(current_node.val)
-            current_node.color = current_color
-            if current_node.left:
-                queue.append((current_node.left, adjust_color(current_color)))
-            if current_node.right:
-                queue.append((current_node.right, adjust_color(current_color)))
-
-    return visited
-
-def adjust_color(color):
-    # Convert the color from hex to RGB
-    r, g, b = int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)
-
-    # Darken the color 
-    darken_factor = 0.7  
-    r = max(0, int(r * darken_factor))
-    g = max(0, int(g * darken_factor))
-    b = max(0, int(b * darken_factor))
-
-    # Convert the darkened RGB values back to hex
-    darkened_color = "#{:02X}{:02X}{:02X}".format(r, g, b)
-
-    return darkened_color
 
 
 root = Node(0)
@@ -98,13 +101,22 @@ root.left.right = Node(10)
 root.right = Node(1)
 root.right.left = Node(3)
 
-dfs_colors = dfs(root)
-draw_tree(root)
 
-bfs_colors = bfs(root)
-draw_tree(root)
+root, dfs_colors, visited_nodes = dfs(root)
+draw_tree(root, dfs_colors)
+print()
+print("DFS table: visited nodes | colors")
+table = tabulate((visited_nodes, dfs_colors.values()), tablefmt="fancy_grid", numalign="center")
+print(table)
+print()
 
-print("\nDFS:", dfs_colors)
-print("\nBFS:", bfs_colors)
+visited_nodes_bfs, bfs_colors = bfs(root)
+draw_tree(root, bfs_colors)
+print()
+print("BFS table: visited nodes | colors")
+table_bfs = tabulate((visited_nodes_bfs, bfs_colors.values()), tablefmt="fancy_grid", numalign="center")
+print(table_bfs)
+print()
+
 
 
